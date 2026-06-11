@@ -12,7 +12,7 @@ _logger = getLogger(__name__)
 @Client.on_message(filters.command("start") & filters.private)
 async def start_command(client: Client, message: Message):
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("➕ ثبت طلب (کسی بدهکاره)", callback_data="add_demand")],
+        [InlineKeyboardButton("➕ ثبت طلب (من طلبکارم)", callback_data="add_demand")],
         [InlineKeyboardButton("➖ ثبت بدهی (من بدهکارم)", callback_data="add_owe")],
         [InlineKeyboardButton("📊 مشاهده تراز کلی", callback_data="show_status")],
     ])
@@ -95,8 +95,16 @@ async def handle_callbacks(client: Client, callback_query: CallbackQuery):
 
             if is_demand:
                 db_manager.add_transaction(user.id, target_user_id, amount, description)
+                notif_text = f"🔔 **رسید تراکنش جدید**\n\n👤 **{user.first_name}** ثبت کرده که شما **{amount:,} تومان** بابت «{description}» به ایشون بدهکار هستید."
             else:
                 db_manager.add_transaction(target_user_id, user.id, amount, description)
+                notif_text = f"🔔 **رسید تراکنش جدید**\n\n👤 **{user.first_name}** ثبت کرده که **{amount:,} تومان** بابت «{description}» به شما بدهکار شده (شما طلبکار شدید)."
+
+            main_menu_keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("➕ ثبت طلب (کسی بدهکاره)", callback_data="add_demand")],
+                [InlineKeyboardButton("➖ ثبت بدهی (من بدهکارم)", callback_data="add_owe")],
+                [InlineKeyboardButton("📊 مشاهده تراز کلی", callback_data="show_status")]
+            ])
 
             await client.send_message(
                 chat_id,
@@ -104,18 +112,26 @@ async def handle_callbacks(client: Client, callback_query: CallbackQuery):
                 f"👤 شخص: {target_first_name}\n"
                 f"💰 مبلغ: {amount:,} تومان\n"
                 f"📝 بابت: {description}\n"
-                f"نوع: {transaction_type}"
+                f"نوع: {transaction_type}",
+                reply_markup=main_menu_keyboard
             )
+
+            if target_user_id != user.id:
+                try:
+                    await client.send_message(target_user_id, notif_text)
+                except Exception:
+                    await client.send_message(
+                        chat_id,
+                        f"⚠️ **نکته:** پیامک اطلاع‌رسانی برای {target_first_name} ارسال نشد، چون هنوز ربات رو Start نکرده."
+                    )
 
         except Exception as e:
             _logger.error(e)
             await client.send_message(chat_id, "❌ خطایی در ثبت رخ داد یا فرآیند لغو شد.")
-
     elif data == "show_status":
         balances = db_manager.get_user_balances(user.id)
 
         if not balances:
-            # ساخت دکمه بازگشت برای وقتی که حسابی وجود ندارد
             keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="main_menu")]])
             await callback_query.edit_message_text(
                 "🎉 حساب شما کاملاً پاکه! هیچ طلب یا بدهی ثبت نشده‌ای ندارید.",
